@@ -303,21 +303,21 @@
     <!-- SHARE -->
     <section class="panel" id="panel-share">
       <div class="share-block">
-        <h3>🔗 Save your progress</h3>
-        <p>This page saves your progress <b>in its own link</b> — no account, no server. Every time you tick something off, the page address updates automatically. <b>Bookmark this tab</b> (or copy the link below) so you come back to the same progress next time.</p>
+        <h3>🔗 Your progress saves automatically</h3>
+        <p>This page remembers you — every tick is saved right in this browser the moment you make it. No account, no server, nothing to bookmark or copy. Just come back to this same web address any time and your streaks, points, and badges will be exactly where you left them.</p>
         <div class="row-flex">
-          <button class="btn" id="copyLinkBtn">Copy My Link</button>
+          <button class="btn" id="copyLinkBtn">Copy Page Link</button>
         </div>
       </div>
 
       <div class="share-block">
         <h3>👯 Share with your accountability partner</h3>
-        <p>Send them <b>this same HTML file</b>. When they open it, they get a fresh, empty tracker that's entirely theirs — their own link, their own streaks and badges. You each track separately, side by side.</p>
+        <p>Send them <b>this same page link</b>. When they open it, they get a fresh, empty tracker that's entirely theirs — their own progress, saved automatically in their own browser. You each track separately, side by side.</p>
       </div>
 
       <div class="share-block">
         <h3>💾 Backup code</h3>
-        <p>A text version of your progress, in case the link gets lost (e.g. moving to a new device). Copy it somewhere safe, or paste one back in to restore.</p>
+        <p>Auto-save lives in this browser only — clearing your browser data, or opening the tracker on a different device, starts fresh. This code is a portable copy of your progress: copy it somewhere safe, or paste one back in (here or on another device) to restore.</p>
         <textarea id="syncCode" rows="3" readonly></textarea>
         <div class="row-flex">
           <button class="btn secondary" id="copyCodeBtn">Copy Code</button>
@@ -358,6 +358,8 @@
   let state = { days: {} }; // days["YYYY-MM-DD"] = {s:0/1, w:0/1, c:0/1}
   let viewDate = todayDate();
 
+  const STORAGE_KEY = "fitnessQuestState_v1";
+
   function encodeState(){
     const json = JSON.stringify(state);
     return btoa(unescape(encodeURIComponent(json)));
@@ -370,15 +372,29 @@
     } catch(e) {}
     return null;
   }
-  function loadFromHash(){
-    const h = location.hash.replace(/^#/, "");
-    if (!h) return;
-    const obj = decodeState(h);
-    if (obj) state = obj;
+
+  // Primary persistence: localStorage, scoped to this page's origin — saves
+  // automatically on every change, no link or bookmark required.
+  function saveState(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch(e) { /* private browsing / storage disabled — state still works for this session */ }
   }
-  function saveToHash(){
-    const code = encodeState();
-    history.replaceState(null, "", "#" + code);
+  function loadState(){
+    // One-time migration: an old bookmarked link from before auto-save used a
+    // #-encoded state. If localStorage is empty but a hash is present, adopt it.
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        if (obj && obj.days) { state = obj; return; }
+      }
+    } catch(e) {}
+    const h = location.hash.replace(/^#/, "");
+    if (h) {
+      const obj = decodeState(h);
+      if (obj) { state = obj; saveState(); }
+    }
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
   }
 
   function getDay(key){ return state.days[key] || {s:0,w:0,c:0}; }
@@ -387,7 +403,7 @@
     d[habit] = val ? 1 : 0;
     if (!d.s && !d.w && !d.c) delete state.days[key];
     else state.days[key] = d;
-    saveToHash();
+    saveState();
     renderAll();
   }
 
@@ -629,8 +645,7 @@
 
   // ---------- share tab actions ----------
   document.getElementById("copyLinkBtn").addEventListener("click", () => {
-    saveToHash();
-    navigator.clipboard.writeText(location.href).then(() => toast("Link copied — bookmark it!"))
+    navigator.clipboard.writeText(location.origin + location.pathname).then(() => toast("Page link copied"))
       .catch(() => toast("Copy the address bar manually"));
   });
   document.getElementById("copyCodeBtn").addEventListener("click", () => {
@@ -642,13 +657,13 @@
   document.getElementById("loadCodeBtn").addEventListener("click", () => {
     const code = document.getElementById("loadCodeInput").value.trim();
     const obj = decodeState(code);
-    if (obj) { state = obj; saveToHash(); renderAll(); toast("Progress restored"); }
+    if (obj) { state = obj; saveState(); renderAll(); toast("Progress restored"); }
     else toast("That code didn't look right");
   });
   document.getElementById("resetBtn").addEventListener("click", () => {
     if (confirm("Reset all logged days? This can't be undone.")) {
       state = { days: {} };
-      saveToHash();
+      saveState();
       renderAll();
       toast("All data cleared");
     }
@@ -667,7 +682,7 @@
   });
 
   // ---------- init ----------
-  loadFromHash();
+  loadState();
   renderAll();
 })();
 </script>
